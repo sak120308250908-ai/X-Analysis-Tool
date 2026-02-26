@@ -209,6 +209,46 @@ if st.session_state.df is not None:
                 
         except ImportError:
             st.error("キーワード抽出の準備中（janomeライブラリをインストール中）です。数秒後に再度お試しください。")
+
+    # --- Specific Keyword Analysis ---
+    st.markdown("---")
+    st.subheader("🎯 特定キーワードのエンゲージメント比較")
+    st.write("指定したキーワードが含まれる投稿と、含まれない投稿で反響にどのくらい差があるかを比較します。")
+    
+    specific_keyword = st.text_input("比較したいキーワードを入力してください", placeholder="新台")
+    
+    if specific_keyword:
+        df_with_kw = df[df['Text'].str.contains(specific_keyword, case=False, na=False)]
+        df_without_kw = df[~df['Text'].str.contains(specific_keyword, case=False, na=False)]
+        
+        if len(df_with_kw) == 0:
+            st.warning(f"「{specific_keyword}」が含まれるツイートは見つかりませんでした。")
+        else:
+            col_kw_comp1, col_kw_comp2 = st.columns(2)
+            
+            with col_kw_comp1:
+                st.markdown(f"**✅ 「{specific_keyword}」を含む投稿 ({len(df_with_kw)}件)**")
+                st.metric("平均スコア", f"{int(df_with_kw['Engagement'].mean())}")
+                st.metric("平均いいね数", f"{int(df_with_kw['Likes'].mean())}")
+                st.metric("平均RT数", f"{int(df_with_kw['Retweets'].mean())}")
+                
+            with col_kw_comp2:
+                st.markdown(f"**❌ 含まれない投稿 ({len(df_without_kw)}件)**")
+                if len(df_without_kw) > 0:
+                    st.metric("平均スコア", f"{int(df_without_kw['Engagement'].mean())}")
+                    st.metric("平均いいね数", f"{int(df_without_kw['Likes'].mean())}")
+                    st.metric("平均RT数", f"{int(df_without_kw['Retweets'].mean())}")
+                else:
+                    st.write("比較対象データがありません")
+            
+            comp_data = pd.DataFrame({
+                "状態": [f"「{specific_keyword}」あり", f"なし"],
+                "平均スコア": [
+                    int(df_with_kw['Engagement'].mean()) if len(df_with_kw)>0 else 0,
+                    int(df_without_kw['Engagement'].mean()) if len(df_without_kw)>0 else 0
+                ]
+            })
+            st.bar_chart(comp_data.set_index("状態"))
                 
 # --- AI Summary ---
     st.markdown("---")
