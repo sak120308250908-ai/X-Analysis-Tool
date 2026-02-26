@@ -4,6 +4,7 @@ import urllib.request
 import urllib.error
 import re
 import json
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="X (Twitter) アカウント分析ツール", layout="wide")
 
@@ -36,7 +37,8 @@ def fetch_tweets(screen_name, cursor=None):
         return tweets, bottom_cursor
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            st.error("⚠️ アクセスが集中しているため、一時的にX（Twitter）側からブロックされています。約15分ほど時間を置いてから再度お試しください。")
+            st.session_state.rate_limit_until = datetime.now() + timedelta(minutes=15)
+            st.rerun()
         else:
             st.error(f"データ取得エラー（サーバーエラー）: {e.code} - {e.reason}")
         return [], None
@@ -53,11 +55,23 @@ if 'top_tweets' not in st.session_state:
     st.session_state.top_tweets = None
 if 'hour_eng' not in st.session_state:
     st.session_state.hour_eng = None
+if 'rate_limit_until' not in st.session_state:
+    st.session_state.rate_limit_until = None
 
 # --- UI ---
 target_user = st.text_input("🔍 XのアカウントIDを入力してください（@は不要です）", placeholder="elonmusk", value="")
 
-if st.button("データ取得・分析開始", type="primary"):
+is_rate_limited = False
+if st.session_state.rate_limit_until:
+    if datetime.now() < st.session_state.rate_limit_until:
+        is_rate_limited = True
+        wait_until_str = st.session_state.rate_limit_until.strftime("%H:%M:%S")
+        st.error(f"🚨 現在X側でアクセス制限がかかっています。{wait_until_str} 以降に再度お試しください。")
+        st.info("※データ取得ボタンは制限解除まで一時的に無効化されています。")
+    else:
+        st.session_state.rate_limit_until = None
+
+if st.button("データ取得・分析開始", type="primary", disabled=is_rate_limited):
     if not target_user:
         st.warning("アカウントIDを入力してください。")
     else:
