@@ -34,6 +34,12 @@ def fetch_tweets(screen_name, cursor=None):
                 bottom_cursor = c['content']['value']
                 
         return tweets, bottom_cursor
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            st.error("⚠️ アクセスが集中しているため、一時的にX（Twitter）側からブロックされています。約15分ほど時間を置いてから再度お試しください。")
+        else:
+            st.error(f"データ取得エラー（サーバーエラー）: {e.code} - {e.reason}")
+        return [], None
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
         return [], None
