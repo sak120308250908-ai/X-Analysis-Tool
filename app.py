@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timedelta
 import zipfile
 import io
+import matplotlib.pyplot as plt
+import japanize_matplotlib
 
 st.set_page_config(page_title="X (Twitter) アカウント分析ツール", layout="wide")
 
@@ -61,6 +63,10 @@ if 'rate_limit_until' not in st.session_state:
     st.session_state.rate_limit_until = None
 if 'ai_analysis' not in st.session_state:
     st.session_state.ai_analysis = None
+if 'df_kw' not in st.session_state:
+    st.session_state.df_kw = None
+if 'media_eng' not in st.session_state:
+    st.session_state.media_eng = None
 
 # --- UI ---
 target_user = st.text_input("🔍 XのアカウントIDを入力してください（@は不要です）", placeholder="elonmusk", value="")
@@ -165,8 +171,10 @@ if st.session_state.df is not None:
     with col_chart2:
         st.subheader("🖼 画像・動画の枚数による差")
         media_eng = df.groupby('MediaCount')['Engagement'].mean().reset_index()
-        media_eng['MediaCount'] = media_eng['MediaCount'].astype(str) + "枚"
-        st.bar_chart(media_eng.set_index('MediaCount'))
+        st.session_state.media_eng = media_eng # Store for ZIP
+        media_eng_display = media_eng.copy()
+        media_eng_display['MediaCount'] = media_eng_display['MediaCount'].astype(str) + "枚"
+        st.bar_chart(media_eng_display.set_index('MediaCount'))
         st.caption("※何枚の画像を添付した投稿が一番反響があるかが分かります")
     
     # --- Keyword Analysis ---
@@ -213,6 +221,7 @@ if st.session_state.df is not None:
             if kw_stats:
                 df_kw = pd.DataFrame(kw_stats)
                 df_kw = df_kw.sort_values(by="平均エンゲージメント", ascending=False).head(10)
+                st.session_state.df_kw = df_kw # Store for ZIP
                 
                 # テーブルとグラフで表示
                 col_kw1, col_kw2 = st.columns([1, 1.5])
@@ -340,19 +349,63 @@ if st.session_state.df is not None:
     if st.session_state.ai_analysis:
         st.markdown("---")
         st.subheader("🎯 提案用レポ一ト・ダウンロード")
-        st.write("AIの分析コメント（TEXT）と投稿データ（CSV）をひとつのファイルにまとめて保存します。")
+        st.write("AIの分析コメント、グラフ画像、および詳細データをひとつのファイルにまとめて保存します。")
         
+        # Helper function to save matplotlib figure to bytes
+        def fig_to_bytes(fig):
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", bbox_inches='tight')
+            plt.close(fig)
+            return buf.getvalue()
+
         # Create ZIP
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-            # AI Advice
-            zip_file.writestr("ai_analysis.txt", st.session_state.ai_analysis)
-            # CSV Data
-            zip_file.writestr("tweet_data.csv", df.to_csv(index=False).encode('utf-8-sig'))
+            # 1. AI Advice
+            zip_file.writestr("0_AI分析レポート.txt", st.session_state.ai_analysis)
+            
+            # 2. Main Tweet Data
+            zip_file.writestr("1_全ツイートデータ.csv", df.to_csv(index=False).encode('utf-8-sig'))
+            
+            # 3. Time Analysis
+            if st.session_state.hour_eng is not None:
+                h_df = st.session_state.hour_eng
+                zip_file.writestr("2_時間帯別分析データ.csv", h_df.to_csv(index=False).encode('utf-8-sig'))
+                
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.bar(h_df['Hour'], h_df['Engagement'], color='skyblue')
+                ax.set_title(f"@{target_user} 時間帯別の平均エンゲージメント")
+                ax.set_xlabel("時間（24時間表記）")
+                ax.set_ylabel("平均スコア")
+                ax.set_xticks(range(24))
+                zip_file.writestr("2_時間帯別分析グラフ.png", fig_to_bytes(fig))
+
+            # 4. Media Analysis
+            if st.session_state.media_eng is not None:
+                m_df = st.session_state.media_eng
+                zip_file.writestr("3_メディア枚数別分析データ.csv", m_df.to_csv(index=False).encode('utf-8-sig'))
+                
+                fig, ax = plt.subplots(figsize=(8, 5))
+                ax.bar(m_df['MediaCount'].astype(str) + "枚", m_df['Engagement'], color='lightgreen')
+                ax.set_title(f"@{target_user} メディア枚数による反響の差")
+                ax.set_ylabel("平均スコア")
+                zip_file.writestr("3_メディア枚数別分析グラフ.png", fig_to_bytes(fig))
+
+            # 5. Keyword Analysis
+            if st.session_state.df_kw is not None:
+                k_df = st.session_state.df_kw
+                zip_file.writestr("4_キーワード分析データ.csv", k_df.to_csv(index=False).encode('utf-8-sig'))
+                
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.bar(k_df['キーワード'], k_df['平均エンゲージメント'], color='orange')
+                ax.set_title(f"@{target_user} エンゲージメントが高いキーワードTOP10")
+                ax.set_ylabel("平均スコア")
+                plt.xticks(rotation=45)
+                zip_file.writestr("4_キーワード分析グラフ.png", fig_to_bytes(fig))
             
         st.download_button(
-            label="🎁 提案用セットをまとめてダウンロード (.zip)",
+            label="🎁 提案用フルセットをまとめてダウンロード (.zip)",
             data=zip_buffer.getvalue(),
-            file_name=f"{target_user}_proposal_pack.zip",
+            file_name=f"{target_user}_full_report.zip",
             mime="application/zip",
         )
