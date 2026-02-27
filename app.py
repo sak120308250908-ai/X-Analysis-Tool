@@ -5,6 +5,8 @@ import urllib.error
 import re
 import json
 from datetime import datetime, timedelta
+import zipfile
+import io
 
 st.set_page_config(page_title="X (Twitter) アカウント分析ツール", layout="wide")
 
@@ -57,6 +59,8 @@ if 'hour_eng' not in st.session_state:
     st.session_state.hour_eng = None
 if 'rate_limit_until' not in st.session_state:
     st.session_state.rate_limit_until = None
+if 'ai_analysis' not in st.session_state:
+    st.session_state.ai_analysis = None
 
 # --- UI ---
 target_user = st.text_input("🔍 XのアカウントIDを入力してください（@は不要です）", placeholder="elonmusk", value="")
@@ -306,6 +310,7 @@ if st.session_state.df is not None:
                     )
                     
                     st.info(response.text)
+                    st.session_state.ai_analysis = response.text
                     
                 except Exception as e:
                     st.error(f"AI分析中にエラーが発生しました: {e}")
@@ -330,3 +335,24 @@ if st.session_state.df is not None:
         file_name=f"{target_user}_analysis.csv",
         mime="text/csv",
     )
+
+    # --- Combined Download (ZIP) ---
+    if st.session_state.ai_analysis:
+        st.markdown("---")
+        st.subheader("🎯 提案用レポ一ト・ダウンロード")
+        st.write("AIの分析コメント（TEXT）と投稿データ（CSV）をひとつのファイルにまとめて保存します。")
+        
+        # Create ZIP
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            # AI Advice
+            zip_file.writestr("ai_analysis.txt", st.session_state.ai_analysis)
+            # CSV Data
+            zip_file.writestr("tweet_data.csv", df.to_csv(index=False))
+            
+        st.download_button(
+            label="🎁 提案用セットをまとめてダウンロード (.zip)",
+            data=zip_buffer.getvalue(),
+            file_name=f"{target_user}_proposal_pack.zip",
+            mime="application/zip",
+        )
