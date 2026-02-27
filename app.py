@@ -8,7 +8,28 @@ from datetime import datetime, timedelta
 import zipfile
 import io
 import matplotlib.pyplot as plt
-import japanize_matplotlib
+
+# Python 3.12+ (Streamlit Cloud 3.13) compatibility fix for japanize-matplotlib
+try:
+    import japanize_matplotlib
+except (ImportError, ModuleNotFoundError):
+    # If distutils is missing, attempt to mock it for japanize-matplotlib
+    try:
+        import sys
+        import types
+        mock_distutils = types.ModuleType("distutils")
+        mock_distutils_version = types.ModuleType("distutils.version")
+        class LooseVersion:
+            def __init__(self, version_str): self.v = version_str
+            def __lt__(self, other): return False
+        mock_distutils_version.LooseVersion = LooseVersion
+        mock_distutils.version = mock_distutils_version
+        sys.modules["distutils"] = mock_distutils
+        sys.modules["distutils.version"] = mock_distutils_version
+        import japanize_matplotlib
+    except Exception:
+        # Graceful failure: the app will run, but graphs might not show Japanese characters correctly
+        pass
 
 st.set_page_config(page_title="X (Twitter) アカウント分析ツール", layout="wide")
 
