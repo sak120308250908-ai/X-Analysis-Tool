@@ -328,7 +328,7 @@ if st.session_state.df is not None:
     st.dataframe(df[['JST_Date', 'Engagement', 'Likes', 'Retweets', 'Replies', 'MediaCount', 'Text', 'URL']].sort_values(by='JST_Date', ascending=False))
     
     # CSV Download
-    csv = df.to_csv(index=False).encode('utf-8')
+    csv = df.to_csv(index=False).encode('utf-8-sig')
     st.download_button(
         label="💾 全データをCSVでダウンロード",
         data=csv,
@@ -348,7 +348,7 @@ if st.session_state.df is not None:
             # AI Advice
             zip_file.writestr("ai_analysis.txt", st.session_state.ai_analysis)
             # CSV Data
-            zip_file.writestr("tweet_data.csv", df.to_csv(index=False))
+            zip_file.writestr("tweet_data.csv", df.to_csv(index=False).encode('utf-8-sig'))
             
         st.download_button(
             label="🎁 提案用セットをまとめてダウンロード (.zip)",
