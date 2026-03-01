@@ -1,4 +1,8 @@
 import streamlit as st
+import os
+for _k in ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]:
+    if _k in st.secrets:
+        os.environ[_k] = str(st.secrets[_k])
 import pandas as pd
 import urllib.request
 import urllib.error
