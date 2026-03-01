@@ -1,9 +1,3 @@
-"""
-database.py
-PostgreSQL (Supabase) のCRUD操作をまとめたモジュール。
-scheduler.py（書き込み）と app.py（読み込み）の両方から使用する。
-"""
-
 import os
 import psycopg2
 import psycopg2.extras
@@ -28,33 +22,33 @@ def init_db():
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS accounts (
-                    screen_name      TEXT PRIMARY KEY,
-                    display_name     TEXT,
-                    last_fetched_at  TIMESTAMPTZ
+                    screen_name TEXT PRIMARY KEY,
+                    display_name TEXT,
+                    last_fetched_at TIMESTAMPTZ
                 )
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS tweets (
-                    id_str          TEXT PRIMARY KEY,
-                    screen_name     TEXT NOT NULL REFERENCES accounts(screen_name),
-                    created_at_utc  TIMESTAMPTZ,
-                    jst_datetime    TIMESTAMPTZ,
-                    hour_jst        INTEGER,
-                    likes           INTEGER DEFAULT 0,
-                    retweets        INTEGER DEFAULT 0,
-                    replies         INTEGER DEFAULT 0,
-                    quotes          INTEGER DEFAULT 0,
-                    media_count     INTEGER DEFAULT 0,
-                    engagement      INTEGER DEFAULT 0,
-                    text            TEXT,
-                    url             TEXT,
-                    fetched_at      TIMESTAMPTZ
+                    id_str TEXT PRIMARY KEY,
+                    screen_name TEXT NOT NULL REFERENCES accounts(screen_name),
+                    created_at_utc TIMESTAMPTZ,
+                    jst_datetime TIMESTAMPTZ,
+                    hour_jst INTEGER,
+                    likes INTEGER DEFAULT 0,
+                    retweets INTEGER DEFAULT 0,
+                    replies INTEGER DEFAULT 0,
+                    quotes INTEGER DEFAULT 0,
+                    media_count INTEGER DEFAULT 0,
+                    engagement INTEGER DEFAULT 0,
+                    text TEXT,
+                    url TEXT,
+                    fetched_at TIMESTAMPTZ
                 )
             """)
         conn.commit()
 
 
-def upsert_tweets(screen_name: str, records: list[dict]):
+def upsert_tweets(screen_name, records):
     now = datetime.now(timezone.utc).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -85,7 +79,7 @@ def upsert_tweets(screen_name: str, records: list[dict]):
         conn.commit()
 
 
-def load_tweets(screen_name: str) -> pd.DataFrame:
+def load_tweets(screen_name):
     with get_connection() as conn:
         df = pd.read_sql_query(
             "SELECT * FROM tweets WHERE screen_name = %s ORDER BY jst_datetime DESC",
@@ -105,7 +99,7 @@ def load_tweets(screen_name: str) -> pd.DataFrame:
     return df
 
 
-def list_accounts() -> list[dict]:
+def list_accounts():
     with get_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -115,4 +109,12 @@ def list_accounts() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_last_fetched(
+def get_last_fetched(screen_name):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT last_fetched_at FROM accounts WHERE screen_name = %s",
+                (screen_name,)
+            )
+            row = cur.fetchone()
+    return row[0].isoformat() if row and row[0] else None
