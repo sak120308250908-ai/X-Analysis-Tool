@@ -1,0 +1,33 @@
+name: 夜間データ収集バッチ
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # 毎日 UTC 18:00 = JST 翌 3:00
+  workflow_dispatch:         # GitHub画面から手動実行も可能
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    env:
+      DB_HOST:     ${{ secrets.DB_HOST }}
+      DB_PORT:     ${{ secrets.DB_PORT }}
+      DB_NAME:     ${{ secrets.DB_NAME }}
+      DB_USER:     ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 依存パッケージをインストール
+        run: pip install -r 要件.txt
+
+      - name: バッチ実行
+        run: python scheduler.py
