@@ -27,7 +27,7 @@ jobs:
           cache: pip
 
       - name: 依存パッケージをインストール
-        run: pip install -r 要件.txt
+        run: pip install -r requirements.txt
 
       - name: バッチ実行
         run: python scheduler.py
