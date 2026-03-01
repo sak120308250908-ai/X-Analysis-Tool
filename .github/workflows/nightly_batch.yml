@@ -1,9 +1,9 @@
-name: 夜間データ収集バッチ
+name: nightly_batch
 
 on:
   schedule:
-    - cron: "0 18 * * *"   # 毎日 UTC 18:00 = JST 翌 3:00
-  workflow_dispatch:         # GitHub画面から手動実行も可能
+    - cron: "0 18 * * *"
+  workflow_dispatch:
 
 jobs:
   fetch:
@@ -17,17 +17,12 @@ jobs:
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
 
     steps:
-      - name: リポジトリをチェックアウト
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Python をセットアップ
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
-      - name: 依存パッケージをインストール
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: バッチ実行
-        run: python scheduler.py
+      - run: python scheduler.py
