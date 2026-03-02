@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 
-# Streamlit Secrets → 環境変数
 for _k in ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]:
     if _k in st.secrets:
         os.environ[_k] = str(st.secrets[_k])
@@ -12,7 +11,6 @@ import io
 import zipfile
 import matplotlib.pyplot as plt
 
-# japanize-matplotlib の互換処理
 try:
     import japanize_matplotlib
 except (ImportError, ModuleNotFoundError):
@@ -33,9 +31,6 @@ except (ImportError, ModuleNotFoundError):
 
 st.set_page_config(page_title="X (Twitter) アカウント分析ツール", layout="wide")
 
-# =====================
-# Supabase接続関数
-# =====================
 def get_connection():
     import psycopg2
     return psycopg2.connect(
@@ -49,7 +44,6 @@ def get_connection():
 
 @st.cache_data(ttl=300)
 def get_accounts():
-    """取得済みアカウント一覧を取得"""
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -63,16 +57,15 @@ def get_accounts():
 
 @st.cache_data(ttl=300)
 def load_tweets(screen_name):
-    """指定アカウントのツイートを全件取得"""
     try:
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT tweet_id, created_at, likes, retweets, replies, quotes,
-                   media_count, url, full_text
+            SELECT id_str, created_at_utc, likes, retweets, replies, quotes,
+                   media_count, url, text, engagement, hour_jst
             FROM tweets
             WHERE screen_name = %s
-            ORDER BY created_at DESC;
+            ORDER BY created_at_utc DESC;
         """, (screen_name,))
         rows = cur.fetchall()
         conn.close()
@@ -80,24 +73,18 @@ def load_tweets(screen_name):
             return None
         df = pd.DataFrame(rows, columns=[
             'tweet_id', 'Date', 'Likes', 'Retweets', 'Replies', 'Quotes',
-            'MediaCount', 'URL', 'Text'
+            'MediaCount', 'URL', 'Text', 'Engagement', 'Hour'
         ])
-        df['Engagement'] = df['Likes'] + df['Retweets'] * 2 + df['Replies'] * 3
         df['Date'] = pd.to_datetime(df['Date'], utc=True)
         df['JST_Date'] = df['Date'] + pd.Timedelta(hours=9)
-        df['Hour'] = df['JST_Date'].dt.hour
         return df
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
         return None
 
-# =====================
-# UI
-# =====================
 st.title("📊 X (Twitter) アカウント分析ツール")
 st.write("毎日自動収集したデータを元に、エンゲージメントの傾向を分析します。")
 
-# サイドバー：アカウント選択
 st.sidebar.header("📋 アカウント選択")
 accounts = get_accounts()
 
@@ -110,24 +97,17 @@ selected_account = st.sidebar.selectbox(
     accounts,
     format_func=lambda x: f"@{x}"
 )
-
 st.sidebar.markdown("---")
 st.sidebar.info("データは毎日AM3時（JST）に自動更新されます。")
 
-# メイン：アカウントIDの手動入力も可能
 st.markdown("---")
 col_input, col_btn = st.columns([3, 1])
 with col_input:
-    manual_input = st.text_input(
-        "🔍 または直接アカウントIDを入力（@は不要）",
-        placeholder="例: elonmusk",
-        value=""
-    )
+    manual_input = st.text_input("🔍 または直接アカウントIDを入力（@は不要）", placeholder="例: elonmusk", value="")
 with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
     search_btn = st.button("検索", type="primary")
 
-# 対象アカウント決定
 if search_btn and manual_input.strip():
     target_user = manual_input.strip().lstrip("@")
 else:
@@ -135,17 +115,13 @@ else:
 
 st.markdown(f"## 📈 @{target_user} のエンゲージメント分析レポート")
 
-# データ読み込み
 with st.spinner("データを読み込んでいます..."):
     df = load_tweets(target_user)
 
 if df is None or len(df) == 0:
-    st.warning(f"@{target_user} のデータがありません。バッチで収集されていない可能性があります。")
+    st.warning(f"@{target_user} のデータがありません。")
     st.stop()
 
-# =====================
-# サマリー
-# =====================
 col1, col2, col3 = st.columns(3)
 col1.metric("取得ツイート数", f"{len(df)}件")
 col2.metric("平均エンゲージメントスコア", f"{int(df['Engagement'].mean())}")
@@ -153,9 +129,6 @@ col3.metric("最高エンゲージメントスコア", f"{int(df['Engagement'].m
 
 st.markdown("---")
 
-# =====================
-# グラフ
-# =====================
 col_chart1, col_chart2 = st.columns(2)
 
 with col_chart1:
@@ -174,9 +147,6 @@ with col_chart2:
     st.bar_chart(media_eng_display.set_index('MediaCount'))
     st.caption("※何枚の画像を添付した投稿が一番反響があるかが分かります")
 
-# =====================
-# キーワード分析
-# =====================
 st.markdown("---")
 st.subheader("🔑 エンゲージメントが増えやすいキーワードTOP10")
 df_kw = None
@@ -185,13 +155,11 @@ with st.spinner("キーワードを抽出・分析しています..."):
     try:
         from janome.tokenizer import Tokenizer
         from collections import defaultdict
-
         t = Tokenizer()
         keyword_eng = defaultdict(list)
         stop_words = {'これ','それ','あれ','この','その','あの','ここ','そこ','あそこ',
                       'ため','こと','もの','よう','わけ','はず','さん','ちゃん','くん',
                       'たち','今日','明日','昨日','今回','みなさん','皆様'}
-
         for _, row in df.iterrows():
             text = re.sub(r'http\S+|@\S+', '', str(row['Text']))
             tokens = t.tokenize(text)
@@ -199,22 +167,17 @@ with st.spinner("キーワードを抽出・分析しています..."):
             for token in tokens:
                 pos = token.part_of_speech.split(',')[0]
                 word = token.base_form
-                if (pos == '名詞' and len(word) > 1
-                        and word not in stop_words
+                if (pos == '名詞' and len(word) > 1 and word not in stop_words
                         and re.match(r'^[^\W_]+$', word, re.UNICODE)):
                     words.add(word)
             for w in words:
                 keyword_eng[w].append(row['Engagement'])
-
         kw_stats = [
             {"キーワード": kw, "平均エンゲージメント": int(sum(e)/len(e)), "出現回数": len(e)}
             for kw, e in keyword_eng.items() if len(e) >= 2
         ]
-
         if kw_stats:
-            df_kw = pd.DataFrame(kw_stats).sort_values(
-                by="平均エンゲージメント", ascending=False
-            ).head(10)
+            df_kw = pd.DataFrame(kw_stats).sort_values(by="平均エンゲージメント", ascending=False).head(10)
             col_kw1, col_kw2 = st.columns([1, 1.5])
             with col_kw1:
                 st.dataframe(df_kw.set_index("キーワード"))
@@ -226,9 +189,6 @@ with st.spinner("キーワードを抽出・分析しています..."):
     except ImportError:
         st.error("janomeライブラリを準備中です。しばらく後にお試しください。")
 
-# =====================
-# 特定キーワード比較
-# =====================
 st.markdown("---")
 st.subheader("🎯 特定キーワードのエンゲージメント比較")
 specific_keyword = st.text_input("比較したいキーワードを入力", placeholder="新台")
@@ -236,7 +196,6 @@ specific_keyword = st.text_input("比較したいキーワードを入力", plac
 if specific_keyword:
     df_with = df[df['Text'].str.contains(specific_keyword, case=False, na=False)]
     df_without = df[~df['Text'].str.contains(specific_keyword, case=False, na=False)]
-
     if len(df_with) == 0:
         st.warning(f"「{specific_keyword}」が含まれるツイートは見つかりませんでした。")
     else:
@@ -252,7 +211,6 @@ if specific_keyword:
                 st.metric("平均スコア", f"{int(df_without['Engagement'].mean())}")
                 st.metric("平均いいね", f"{int(df_without['Likes'].mean())}")
                 st.metric("平均RT", f"{int(df_without['Retweets'].mean())}")
-
         comp_data = pd.DataFrame({
             "状態": [f"「{specific_keyword}」あり", "なし"],
             "平均スコア": [
@@ -262,9 +220,6 @@ if specific_keyword:
         })
         st.bar_chart(comp_data.set_index("状態"))
 
-# =====================
-# AI分析
-# =====================
 st.markdown("---")
 st.subheader("🤖 AIによるアカウント総評・分析コメント")
 
@@ -309,9 +264,6 @@ if st.button("AIに独自の分析を依頼する"):
             except Exception as e:
                 st.error(f"AI分析中にエラーが発生しました: {e}")
 
-# =====================
-# TOP5投稿
-# =====================
 st.markdown("---")
 st.subheader("🔥 エンゲージメントTOP 5 投稿")
 top_tweets = df.sort_values(by='Engagement', ascending=False).head(5)
@@ -323,9 +275,6 @@ for _, row in top_tweets.iterrows():
         st.write(row['Text'])
         st.markdown(f"[🔗 X(Twitter)で実際の投稿を見る]({row['URL']})")
 
-# =====================
-# データ一覧 & ダウンロード
-# =====================
 st.markdown("---")
 st.subheader("📋 取得データ一覧")
 st.dataframe(
@@ -341,9 +290,6 @@ st.download_button(
     mime="text/csv",
 )
 
-# =====================
-# ZIPダウンロード（AI分析完了後）
-# =====================
 if st.session_state.ai_analysis:
     st.markdown("---")
     st.subheader("🎯 提案用レポート・ダウンロード")
@@ -358,7 +304,6 @@ if st.session_state.ai_analysis:
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zf:
         zf.writestr("0_AI分析レポート.txt", st.session_state.ai_analysis)
         zf.writestr("1_全ツイートデータ.csv", df.to_csv(index=False).encode('utf-8-sig'))
-
         fig, ax = plt.subplots(figsize=(10, 5))
         ax.bar(hour_eng['Hour'], hour_eng['Engagement'], color='skyblue')
         ax.set_title(f"@{target_user} 時間帯別の平均エンゲージメント")
@@ -366,7 +311,6 @@ if st.session_state.ai_analysis:
         ax.set_ylabel("平均スコア")
         ax.set_xticks(range(24))
         zf.writestr("2_時間帯別分析グラフ.png", fig_to_bytes(fig))
-
         if df_kw is not None:
             zf.writestr("3_キーワード分析データ.csv", df_kw.to_csv(index=False).encode('utf-8-sig'))
             fig, ax = plt.subplots(figsize=(12, 6))
