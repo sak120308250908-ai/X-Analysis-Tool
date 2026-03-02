@@ -21,7 +21,7 @@ MAX_PAGES = 10
 RETRY_WAIT = 60
 MAX_RETRIES = 3
 PAGE_INTERVAL = 2
-ACCOUNT_INTERVAL = 10
+ACCOUNT_INTERVAL = 300
 BATCH_SIZE = 38  # 1日あたりの取得アカウント数
 
 def fetch_page(screen_name, cursor=None):
