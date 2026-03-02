@@ -7,7 +7,6 @@ import argparse
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-
 from database import init_db, upsert_tweets
 
 logging.basicConfig(
@@ -23,7 +22,7 @@ RETRY_WAIT = 60
 MAX_RETRIES = 3
 PAGE_INTERVAL = 2
 ACCOUNT_INTERVAL = 10
-
+BATCH_SIZE = 30  # 1日あたりの取得アカウント数
 
 def fetch_page(screen_name, cursor=None):
     url = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{screen_name}"
@@ -42,7 +41,6 @@ def fetch_page(screen_name, cursor=None):
     except Exception as e:
         logger.error(f"[{screen_name}] 取得エラー: {e}")
         return [], None
-
     match = re.search(
         r'<script id="__NEXT_DATA__" type="application/json">({.*?})</script>', html
     )
@@ -53,14 +51,12 @@ def fetch_page(screen_name, cursor=None):
         entries = data["props"]["pageProps"]["timeline"]["entries"]
     except Exception:
         return [], None
-
     tweets = [e for e in entries if e["type"] == "tweet"]
     next_cursor = None
     for e in entries:
         if e["type"] == "timeline_cursor" and e["content"]["cursorType"] == "Bottom":
             next_cursor = e["content"]["value"]
     return tweets, next_cursor
-
 
 def build_record(screen_name, entry):
     try:
@@ -90,7 +86,6 @@ def build_record(screen_name, entry):
         logger.warning(f"[{screen_name}] レコード変換エラー: {e}")
         return None
 
-
 def fetch_account(screen_name):
     logger.info(f"[{screen_name}] 取得開始")
     all_records = {}
@@ -117,23 +112,49 @@ def fetch_account(screen_name):
     else:
         logger.warning(f"[{screen_name}] ⚠️ データが取得できませんでした")
 
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--accounts", nargs="*")
+    parser.add_argument("--accounts", nargs="*", help="アカウントを直接指定")
+    parser.add_argument("--all", action="store_true", help="全アカウントを強制取得")
     args = parser.parse_args()
+
     init_db()
+
     if args.accounts:
+        # 直接指定された場合はそのまま使用
         targets = args.accounts
     elif ACCOUNTS_FILE.exists():
-        targets = [
+        all_accounts = [
             line.strip().lstrip("@")
             for line in ACCOUNTS_FILE.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")
         ]
+
+        if args.all:
+            # --all オプション時は全件取得
+            targets = all_accounts
+            logger.info(f"=== 全件モード: {len(all_accounts)}アカウント ===")
+        else:
+            # 曜日ローテーション (0=月曜, 6=日曜)
+            day_of_week = datetime.now().weekday()
+            start_idx = day_of_week * BATCH_SIZE
+            end_idx = start_idx + BATCH_SIZE
+            targets = all_accounts[start_idx:end_idx]
+
+            day_names = ["月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜"]
+            logger.info(
+                f"=== {day_names[day_of_week]}日 担当: "
+                f"{start_idx + 1}〜{min(end_idx, len(all_accounts))}番目 "
+                f"({len(targets)}アカウント) ==="
+            )
     else:
         logger.error(f"{ACCOUNTS_FILE} が見つかりません。")
         return
+
+    if not targets:
+        logger.warning("本日担当のアカウントがありません（accounts.txtの件数を確認してください）")
+        return
+
     logger.info(f"=== バッチ開始: {len(targets)}アカウント ===")
     for i, account in enumerate(targets):
         fetch_account(account)
@@ -141,6 +162,17 @@ def main():
             time.sleep(ACCOUNT_INTERVAL)
     logger.info("=== バッチ完了 ===")
 
-
 if __name__ == "__main__":
     main()
+```
+
+---
+
+**`accounts.txt` の書き方：**
+```
+hazuki1727
+アカウント2
+アカウント3
+# コメントはこのように#で書けます
+アカウント4
+...
