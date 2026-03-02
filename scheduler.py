@@ -22,7 +22,7 @@ RETRY_WAIT = 60
 MAX_RETRIES = 3
 PAGE_INTERVAL = 2
 ACCOUNT_INTERVAL = 300
-BATCH_SIZE = 38  # 1日あたりの取得アカウント数
+BATCH_SIZE = 38
 
 def fetch_page(screen_name, cursor=None):
     url = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{screen_name}"
@@ -108,9 +108,9 @@ def fetch_account(screen_name):
         time.sleep(PAGE_INTERVAL)
     if all_records:
         upsert_tweets(screen_name, list(all_records.values()))
-        logger.info(f"[{screen_name}] ✅ {len(all_records)}件をDBに保存しました")
+        logger.info(f"[{screen_name}] {len(all_records)}件をDBに保存しました")
     else:
-        logger.warning(f"[{screen_name}] ⚠️ データが取得できませんでした")
+        logger.warning(f"[{screen_name}] データが取得できませんでした")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -121,7 +121,6 @@ def main():
     init_db()
 
     if args.accounts:
-        # 直接指定された場合はそのまま使用
         targets = args.accounts
     elif ACCOUNTS_FILE.exists():
         all_accounts = [
@@ -129,18 +128,14 @@ def main():
             for line in ACCOUNTS_FILE.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")
         ]
-
         if args.all:
-            # --all オプション時は全件取得
             targets = all_accounts
             logger.info(f"=== 全件モード: {len(all_accounts)}アカウント ===")
         else:
-            # 曜日ローテーション (0=月曜, 6=日曜)
             day_of_week = datetime.now().weekday()
             start_idx = day_of_week * BATCH_SIZE
             end_idx = start_idx + BATCH_SIZE
             targets = all_accounts[start_idx:end_idx]
-
             day_names = ["月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜"]
             logger.info(
                 f"=== {day_names[day_of_week]}日 担当: "
@@ -152,7 +147,7 @@ def main():
         return
 
     if not targets:
-        logger.warning("本日担当のアカウントがありません（accounts.txtの件数を確認してください）")
+        logger.warning("本日担当のアカウントがありません")
         return
 
     logger.info(f"=== バッチ開始: {len(targets)}アカウント ===")
@@ -164,15 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
----
-
-**`accounts.txt` の書き方：**
-```
-hazuki1727
-アカウント2
-アカウント3
-# コメントはこのように#で書けます
-アカウント4
-...
