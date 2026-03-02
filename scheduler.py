@@ -22,7 +22,7 @@ RETRY_WAIT = 60
 MAX_RETRIES = 3
 PAGE_INTERVAL = 2
 ACCOUNT_INTERVAL = 10
-BATCH_SIZE = 30  # 1日あたりの取得アカウント数
+BATCH_SIZE = 38  # 1日あたりの取得アカウント数
 
 def fetch_page(screen_name, cursor=None):
     url = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{screen_name}"
